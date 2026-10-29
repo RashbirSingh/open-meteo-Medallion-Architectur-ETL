@@ -7,6 +7,7 @@ questions such as *"Can I swim today in Melbourne?"* or *"When can I walk my dog
 both as SQL views and as an HTML report.
 
 Orchestrated with **Apache Airflow 2.10**, everything runs in **Docker Compose**.
+A walkthrough deck is in [`docs/presentation.html`](docs/presentation.html) (open it in a browser; arrow keys to navigate).
 
 ```mermaid
 flowchart LR

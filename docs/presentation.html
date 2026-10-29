@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open-Meteo Medallion ETL</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f3f0; --surface: #fcfcfb; --surface-2: #ecebe7; --border: #dddcd6;
+  --text: #0b0b0b; --text-2: #52514e; --muted: #77766f;
+  --accent: #2a78d6; --accent-soft: #e8f1fc; --accent-ink: #1c5cab;
+  --bronze: #a8642a; --bronze-soft: #f6ebe0;
+  --silver: #5f6b7a; --silver-soft: #e9edf2;
+  --gold: #a07800; --gold-soft: #fbf3d9;
+  --good: #0ca30c; --good-text: #006300; --critical: #d03b3b;
+  --code-bg: #f0efeb;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #121211; --surface: #1a1a19; --surface-2: #252523; --border: #34342f;
+    --text: #f0efec; --text-2: #c3c2b7; --muted: #96958c;
+    --accent: #3987e5; --accent-soft: #1b2a3d; --accent-ink: #86b6ef;
+    --bronze: #e0995c; --bronze-soft: #2e2219;
+    --silver: #aab6c4; --silver-soft: #22272e;
+    --gold: #e6b93a; --gold-soft: #2d2715;
+    --good-text: #4cc94c; --code-bg: #232321;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121211; --surface: #1a1a19; --surface-2: #252523; --border: #34342f;
+  --text: #f0efec; --text-2: #c3c2b7; --muted: #96958c;
+  --accent: #3987e5; --accent-soft: #1b2a3d; --accent-ink: #86b6ef;
+  --bronze: #e0995c; --bronze-soft: #2e2219;
+  --silver: #aab6c4; --silver-soft: #22272e;
+  --gold: #e6b93a; --gold-soft: #2d2715;
+  --good-text: #4cc94c; --code-bg: #232321;
+}
+* { box-sizing: border-box; }
+html { scroll-snap-type: y mandatory; scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 17px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.slide {
+  min-height: 100vh; scroll-snap-align: start; display: flex; align-items: center;
+  padding: 56px 16px 72px; border-bottom: 1px solid var(--border);
+}
+.inner { width: 100%; max-width: 1100px; margin: 0 auto; }
+.kicker { font-size: 13px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-ink); margin: 0 0 10px; }
+h1 { font-size: clamp(34px, 6vw, 60px); line-height: 1.05; letter-spacing: -0.02em; margin: 0 0 18px; }
+h2 { font-size: clamp(26px, 4vw, 40px); line-height: 1.1; letter-spacing: -0.015em; margin: 0 0 8px; }
+h3 { font-size: 18px; margin: 0 0 6px; }
+.lead { font-size: clamp(17px, 2.2vw, 21px); color: var(--text-2); max-width: 760px; margin: 0 0 28px; }
+p { margin: 0 0 10px; }
+.muted { color: var(--muted); }
+.small { font-size: 14px; }
+code, pre { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.86em; }
+code { background: var(--code-bg); padding: 1px 6px; border-radius: 5px; }
+pre {
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; overflow-x: auto; margin: 0; line-height: 1.55;
+}
+pre code { background: none; padding: 0; font-size: 14px; }
+.grid { display: grid; gap: 14px; }
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; min-width: 0; }
+.card p { color: var(--text-2); font-size: 15px; margin: 0; }
+.card .tag { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+ul.clean { list-style: none; padding: 0; margin: 0; }
+ul.clean li { padding: 6px 0 6px 26px; position: relative; color: var(--text-2); }
+ul.clean li::before {
+  content: "✓"; position: absolute; left: 0; top: 7px; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--good); color: #fff; font-size: 11px; display: grid; place-items: center;
+}
+ul.dots { margin: 0; padding-left: 20px; color: var(--text-2); }
+ul.dots li { margin: 4px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.scroll-x { overflow-x: auto; }
+
+/* layer colours */
+.bronze { --layer: var(--bronze); --layer-soft: var(--bronze-soft); }
+.silver { --layer: var(--silver); --layer-soft: var(--silver-soft); }
+.gold   { --layer: var(--gold);   --layer-soft: var(--gold-soft); }
+.layer { border-top: 4px solid var(--layer); }
+.pill {
+  display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px;
+  background: var(--layer-soft, var(--accent-soft)); color: var(--layer, var(--accent-ink));
+}
+
+/* architecture flow */
+.flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr auto 1fr; gap: 8px; align-items: stretch; }
+.flow .arrow { align-self: center; color: var(--muted); font-size: 22px; text-align: center; }
+.node { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px; min-width: 0; }
+.node.layer { background: var(--layer-soft); border-color: transparent; border-top: 4px solid var(--layer); }
+.node h3 { font-size: 15px; margin-bottom: 6px; }
+.node ul { margin: 0; padding: 0; list-style: none; font-size: 13px; color: var(--text-2); }
+.node li { padding: 2px 0; overflow-wrap: anywhere; }
+.node .dag { font-size: 12px; color: var(--muted); margin-top: 8px; border-top: 1px dashed var(--border); padding-top: 6px; overflow-wrap: anywhere; }
+
+/* answer cards */
+.answer { display: flex; gap: 12px; align-items: flex-start; }
+.answer .icon { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--good); color: #fff; display: grid; place-items: center; font-weight: 700; }
+.answer b { display: block; }
+.answer span { color: var(--text-2); font-size: 14px; }
+.shot { width: 100%; border-radius: 10px; border: 1px solid var(--border); display: block; }
+
+/* steps */
+.steps { counter-reset: step; display: grid; gap: 12px; min-width: 0; }
+.step { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; align-items: start; }
+.step > div { min-width: 0; }
+.step::before {
+  counter-increment: step; content: counter(step); width: 30px; height: 30px; border-radius: 50%;
+  background: var(--accent); color: #fff; font-weight: 700; display: grid; place-items: center; font-size: 14px;
+}
+.step pre { margin-top: 6px; }
+
+/* chrome */
+.nav {
+  position: fixed; right: 16px; bottom: 16px; display: flex; gap: 6px; align-items: center; z-index: 5;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 4px 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.12);
+}
+.nav button {
+  border: 0; background: transparent; color: var(--text); font: inherit; font-size: 14px;
+  padding: 6px 10px; border-radius: 999px; cursor: pointer;
+}
+.nav button:hover { background: var(--surface-2); }
+.nav button:focus-visible { outline: 2px solid var(--accent); }
+.nav .count { font-size: 13px; color: var(--muted); min-width: 52px; text-align: center; }
+.progress { position: fixed; left: 0; top: 0; height: 3px; background: var(--accent); width: 0; z-index: 5; transition: width .2s; }
+
+@media (max-width: 900px) {
+  .g3, .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .flow { grid-template-columns: 1fr; }
+  .flow .arrow { transform: rotate(90deg); }
+}
+@media (max-width: 600px) {
+  body { font-size: 16px; }
+  .g2, .g3, .g4 { grid-template-columns: 1fr; }
+  html { scroll-snap-type: none; }
+  .slide { min-height: auto; padding: 40px 16px 48px; }
+}
+@media print {
+  html { scroll-snap-type: none; }
+  .nav, .progress { display: none; }
+  .slide { min-height: auto; break-after: page; border: 0; }
+}
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+
+<!-- 1 -->
+<section class="slide" id="s1">
+  <div class="inner">
+    <p class="kicker">Data Engineer assignment · AI-assisted build</p>
+    <h1>Open-Meteo Medallion ETL</h1>
+    <p class="lead">From a public weather API to plain answers: <b>“Can I swim today in Melbourne?”</b>, <b>“When can I walk my dog?”</b>, built as a bronze → silver → gold pipeline on Airflow and PostgreSQL, running entirely on a laptop.</p>
+    <div class="grid g4">
+      <div class="card"><span class="tag">Sources</span><h3>4 API pipelines</h3><p>Temperature, rain, wind, sunrise/sunset</p></div>
+      <div class="card"><span class="tag">Coverage</span><h3>6 cities</h3><p>Melbourne, Sydney, Brisbane, London, New York, Tokyo</p></div>
+      <div class="card"><span class="tag">Warehouse</span><h3>15 tables + 6 views</h3><p>Every table versioned and audited</p></div>
+      <div class="card"><span class="tag">Run it</span><h3>One command</h3><p><code>docker compose up -d</code></p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 2 -->
+<section class="slide" id="s2">
+  <div class="inner">
+    <p class="kicker">The brief</p>
+    <h2>What was asked, and how it is met</h2>
+    <p class="lead">Build an end-to-end pipeline on the Open-Meteo Forecast API using a medallion architecture that runs locally.</p>
+    <div class="grid g2">
+      <div class="card">
+        <h3>Requirements</h3>
+        <ul class="clean">
+          <li>End-to-end pipeline from the Open-Meteo API</li>
+          <li>Medallion architecture (design is my choice)</li>
+          <li>Runs fully locally</li>
+          <li>Any appropriate technology</li>
+          <li>Repository with instructions to run locally</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Delivered</h3>
+        <ul class="dots">
+          <li>Separate ingestion DAG per domain, landing raw JSON in <b>bronze</b></li>
+          <li>Typed, deduplicated, history-keeping <b>silver</b></li>
+          <li>Question-shaped <b>gold</b> tables and views, plus an HTML report</li>
+          <li>Docker Compose stack: Postgres 16 + Airflow 2.10.5</li>
+          <li>Audit, soft-delete, SCD2 and lineage columns on every table</li>
+          <li>README with setup, design and troubleshooting</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 -->
+<section class="slide" id="s3">
+  <div class="inner">
+    <p class="kicker">Technologies</p>
+    <h2>A small, boring, reliable stack</h2>
+    <p class="lead">Each piece does one job; nothing needs a cloud account or a licence.</p>
+    <div class="grid g3">
+      <div class="card"><span class="tag">Orchestration</span><h3>Apache Airflow 2.10.5</h3><p>TaskFlow API, dynamic task mapping (one task per city), Datasets for data-aware triggering, retries, Connections store.</p></div>
+      <div class="card"><span class="tag">Warehouse</span><h3>PostgreSQL 16</h3><p>JSONB for raw payloads, set-based SQL transforms, partial unique indexes, triggers, views. Also hosts Airflow's metadata DB.</p></div>
+      <div class="card"><span class="tag">Runtime</span><h3>Docker Compose</h3><p>Two services, health checks, named volume for data, bootstrap scripts for DB, admin user and connection.</p></div>
+      <div class="card"><span class="tag">Code</span><h3>Python 3.12</h3><p><code>requests</code> for the API, <code>psycopg2</code> via Airflow's <code>PostgresHook</code>. Config-driven table specs instead of copy-pasted SQL.</p></div>
+      <div class="card"><span class="tag">Source</span><h3>Open-Meteo API</h3><p>Free, keyless forecast API: hourly and daily variables, IANA time zones, 7-day horizon.</p></div>
+      <div class="card"><span class="tag">Presentation</span><h3>HTML + inline SVG</h3><p>Generated report with zero external dependencies: opens offline, light and dark mode, works on a phone.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 -->
+<section class="slide" id="s4">
+  <div class="inner">
+    <p class="kicker">Medallion architecture</p>
+    <h2>Raw → refined → answers</h2>
+    <p class="lead">Each layer is owned by its own DAG and triggers the next one the moment its data lands.</p>
+    <div class="flow">
+      <div class="node">
+        <h3>Open-Meteo API</h3>
+        <ul><li>/v1/forecast</li><li>6 cities</li><li>hourly + daily</li><li>7 days ahead</li></ul>
+        <div class="dag">4 ingestion DAGs<br>hourly / daily</div>
+      </div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="node layer bronze">
+        <h3>Bronze <span class="pill">raw</span></h3>
+        <ul><li>temperature_raw</li><li>rain_raw</li><li>wind_raw</li><li>sunrise_sunset_raw</li></ul>
+        <div class="dag">untouched JSON + request + lineage</div>
+      </div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="node layer silver">
+        <h3>Silver <span class="pill">typed</span></h3>
+        <ul><li>temperature_hourly / _daily</li><li>rain_hourly / _daily</li><li>wind_hourly / _daily</li><li>sunrise_sunset_daily</li><li>etl_load_log</li></ul>
+        <div class="dag">open_meteo_silver</div>
+      </div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="node layer gold">
+        <h3>Gold <span class="pill">answers</span></h3>
+        <ul><li>activity_hourly</li><li>activity_daily</li><li>activity_today (view)</li><li>can_i_swim_today …</li></ul>
+        <div class="dag">open_meteo_gold</div>
+      </div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="node">
+        <h3>Consumers</h3>
+        <ul><li>SQL views</li><li>reports/latest.html</li></ul>
+        <div class="dag">open_meteo_report</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 -->
+<section class="slide bronze" id="s5">
+  <div class="inner">
+    <p class="kicker">Bronze layer</p>
+    <h2>Keep exactly what the API said</h2>
+    <p class="lead">One table per pipeline, one row per city per run. Nothing is parsed, so silver can always be rebuilt from here.</p>
+    <div class="grid g2">
+      <div class="card layer">
+        <h3>Each row stores</h3>
+        <ul class="dots">
+          <li><code>payload</code> (JSONB): the full API response</li>
+          <li><code>request_params</code>, <code>source_endpoint</code>, <code>http_status_code</code>, <code>extracted_at</code></li>
+          <li><code>record_hash</code> of the forecast content (ignores volatile fields)</li>
+          <li><code>dag_id</code>, <code>dag_run_id</code>, <code>task_id</code>, <code>logical_date</code></li>
+        </ul>
+      </div>
+      <div class="card layer">
+        <h3>How a run works</h3>
+        <ul class="dots">
+          <li><code>extract</code> is mapped over the city list: 6 parallel API calls with retries</li>
+          <li><code>load_bronze</code> writes all cities in one transaction</li>
+          <li>The previous version per city is closed (SCD2); a re-run soft-deletes the rows it replaces</li>
+          <li>Emits an Airflow Dataset event, which triggers silver</li>
+        </ul>
+      </div>
+    </div>
+    <p class="small muted" style="margin-top:14px">Schedules: temperature, rain and wind hourly; sunrise/sunset daily.</p>
+  </div>
+</section>
+
+<!-- 6 -->
+<section class="slide silver" id="s6">
+  <div class="inner">
+    <p class="kicker">Silver layer</p>
+    <h2>Typed rows with history</h2>
+    <p class="lead">JSON arrays are flattened into one typed row per city per hour or day, with units in the column names.</p>
+    <div class="grid g3">
+      <div class="card layer"><h3>Flatten &amp; type</h3><p><code>jsonb_array_elements</code> with ordinality, cast to NUMERIC, SMALLINT or TIMESTAMP. Local <i>and</i> UTC time from the IANA zone, so daylight saving is handled correctly.</p></div>
+      <div class="card layer"><h3>Change detection</h3><p>A newer forecast only creates a new version when the values change. One wind update changed 111 hourly values; the other 57 were left alone.</p></div>
+      <div class="card layer"><h3>Safe &amp; incremental</h3><p><code>etl_load_log</code> records each bronze row processed (inserted / closed / unchanged). One transaction per bronze row. The load fails if the API changes a unit.</p></div>
+    </div>
+    <div class="card scroll-x" style="margin-top:14px">
+      <table>
+        <thead><tr><th>Table</th><th>Grain</th><th>Example columns</th></tr></thead>
+        <tbody>
+          <tr><td><code>temperature_hourly</code></td><td>city × hour</td><td>temperature_c, apparent_temperature_c, dew_point_c</td></tr>
+          <tr><td><code>rain_hourly</code></td><td>city × hour</td><td>precipitation_mm, precipitation_probability_pct</td></tr>
+          <tr><td><code>wind_hourly</code></td><td>city × hour</td><td>wind_speed_kmh, wind_direction_deg, wind_gusts_kmh</td></tr>
+          <tr><td><code>sunrise_sunset_daily</code></td><td>city × day</td><td>sunrise_local, sunset_local, daylight_duration_s</td></tr>
+          <tr><td><code>*_daily</code> (3 more)</td><td>city × day</td><td>max / min / sums / dominant direction</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- 7 -->
+<section class="slide gold" id="s7">
+  <div class="inner">
+    <p class="kicker">Gold layer</p>
+    <h2>Turn weather into answers</h2>
+    <p class="lead">Each hour is scored for four activities against explicit, editable rules. The results roll up into windows and a yes/no answer per day.</p>
+    <div class="grid g2">
+      <div class="card layer scroll-x">
+        <h3>Rules (feels-like temperature)</h3>
+        <table>
+          <thead><tr><th>Activity</th><th>Feels</th><th>Rain chance</th><th>Wind / gusts</th></tr></thead>
+          <tbody>
+            <tr><td>Swim</td><td>22–38°C</td><td>≤ 20%, dry</td><td>20 / 35 km/h</td></tr>
+            <tr><td>Run</td><td>4–26°C</td><td>≤ 40%</td><td>30 / 45 km/h</td></tr>
+            <tr><td>Walk the dog</td><td>2–27°C</td><td>≤ 50%</td><td>35 / 50 km/h</td></tr>
+            <tr><td>Walk</td><td>4–30°C</td><td>≤ 50%</td><td>35 / 55 km/h</td></tr>
+          </tbody>
+        </table>
+        <p class="small" style="margin-top:8px">Plus daylight, using sunrise and sunset from silver. Each hour is scored 0–100, and unsuitable hours record why: too cold, rain likely, too windy, dark…</p>
+      </div>
+      <div class="card layer">
+        <h3>Objects</h3>
+        <ul class="dots">
+          <li><code>activity_hourly</code>: hour × city × activity</li>
+          <li><code>activity_daily</code>: can I?, suitable windows, best window, best hour, main blocker</li>
+          <li><code>activity_today</code>: view of the rest of today in each city's local time, computed at query time</li>
+          <li>Question views: <code>can_i_swim_today</code>, <code>can_i_go_for_a_run_today</code>, <code>can_i_walk_my_dog_today</code>, <code>best_time_to_swim_today</code>, <code>when_can_i_walk_today</code></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 8 -->
+<section class="slide" id="s8">
+  <div class="inner">
+    <p class="kicker">Data flow &amp; orchestration</p>
+    <h2>Seven DAGs, chained by data</h2>
+    <p class="lead">Only bronze runs on a clock. Every later layer is triggered by an Airflow Dataset event when its input tables change.</p>
+    <div class="card scroll-x">
+      <table>
+        <thead><tr><th>DAG</th><th>Trigger</th><th>Reads</th><th>Writes</th></tr></thead>
+        <tbody>
+          <tr><td><code>open_meteo_temperature</code> · <code>_rain</code> · <code>_wind</code></td><td>@hourly</td><td>API</td><td>bronze.*_raw</td></tr>
+          <tr><td><code>open_meteo_sunrise_sunset</code></td><td>@daily</td><td>API</td><td>bronze.sunrise_sunset_raw</td></tr>
+          <tr><td><code>open_meteo_silver</code></td><td>any bronze Dataset</td><td>new bronze rows</td><td>7 silver tables + load log</td></tr>
+          <tr><td><code>open_meteo_gold</code></td><td>silver Datasets</td><td>current silver</td><td>activity_hourly → activity_daily</td></tr>
+          <tr><td><code>open_meteo_report</code></td><td>gold Dataset</td><td>gold</td><td>reports/latest.html</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="grid g3" style="margin-top:14px">
+      <div class="card"><h3>~1 minute</h3><p>From API call to updated report, measured end to end under Compose.</p></div>
+      <div class="card"><h3>Idempotent</h3><p>Retries and re-runs never duplicate data: delete-free SCD2 merges and the silver load log.</p></div>
+      <div class="card"><h3>Credentials in one place</h3><p>DAGs reference the <code>loopiq_postgres</code> Airflow Connection, stored encrypted with a Fernet key.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 9 -->
+<section class="slide" id="s9">
+  <div class="inner">
+    <p class="kicker">Auditing &amp; history</p>
+    <h2>Every row explains itself</h2>
+    <p class="lead">The same column groups on every bronze, silver and gold table.</p>
+    <div class="grid g4">
+      <div class="card"><span class="tag">SCD Type 2</span><p><code>row_start_date</code>, <code>row_end_date</code> (9999-12-31 while open), <code>is_current</code>; a partial unique index allows one live version per key</p></div>
+      <div class="card"><span class="tag">Audit</span><p><code>created_at</code>, <code>created_by</code>, <code>row_updated_at</code> (set by a trigger), <code>updated_by</code></p></div>
+      <div class="card"><span class="tag">Soft delete</span><p><code>is_deleted</code>, <code>deleted_at</code>, <code>deleted_by</code>, <code>delete_reason</code>; enforced by a CHECK constraint</p></div>
+      <div class="card"><span class="tag">Lineage</span><p><code>dag_id</code>, <code>dag_run_id</code>, <code>task_id</code>, <code>record_hash</code>, <code>source_bronze_id</code> …</p></div>
+    </div>
+    <p style="margin:18px 0 8px"><b>Example:</b> Sydney temperature after a run, a second run, and a re-run of the second</p>
+    <pre><code>run 6gppZvzK  17:43:10 → 17:43:45  closed when the next version arrived
+run vHaiFb5m  17:43:45 → 17:43:49  soft-deleted: superseded by re-run of the same dag_run
+run vHaiFb5m  17:43:49 → open      current</code></pre>
+  </div>
+</section>
+
+<!-- 10 -->
+<section class="slide" id="s10">
+  <div class="inner">
+    <p class="kicker">End result</p>
+    <h2>“Can I swim today in Melbourne?”</h2>
+    <p class="lead">Live answers from gold on Friday 30 October, as plain SQL or in the generated report.</p>
+    <div class="grid g2">
+      <div class="grid" style="gap:10px">
+        <div class="card answer"><div class="icon">✓</div><div><b>Swim: yes</b><span>12:00–15:00, 18:00–19:00; best around 13:00 (feels 26°C, 0% rain chance, wind 4 km/h)</span></div></div>
+        <div class="card answer"><div class="icon">✓</div><div><b>Run: yes</b><span>06:00–13:00, 14:00–20:00; best around 10:00 (feels 14°C)</span></div></div>
+        <div class="card answer"><div class="icon">✓</div><div><b>Walk the dog: yes</b><span>06:00–20:00; best around 10:00</span></div></div>
+        <div class="card answer"><div class="icon">✓</div><div><b>Walk: yes</b><span>06:00–20:00; best around 11:00 (feels 19°C, wind 3 km/h)</span></div></div>
+        <pre><code>SELECT answer FROM gold.can_i_swim_today
+WHERE location_name = 'Melbourne';</code></pre>
+      </div>
+      <div>
+        <img class="shot" src="report_preview.jpg" alt="Generated HTML report: today's answers for six cities and a 24-hour activity heatmap for Melbourne">
+        <p class="small muted" style="margin-top:8px">reports/latest.html: answers for every city, a 24-hour heatmap, 48-hour conditions and a 7-day outlook.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 11 -->
+<section class="slide" id="s11">
+  <div class="inner">
+    <p class="kicker">How to deploy</p>
+    <h2>Clone, configure, compose</h2>
+    <p class="lead">Needs Docker with Compose and at least 4 GB of memory for Docker.</p>
+    <div class="grid g2">
+      <div class="steps">
+        <div class="step"><div><b>Clone the repository</b>
+<pre><code>git clone https://github.com/RashbirSingh/open-meteo-Medallion-Architectur-ETL.git
+cd open-meteo-Medallion-Architectur-ETL</code></pre></div></div>
+        <div class="step"><div><b>Create <code>.env</code> from the template</b>
+<pre><code>cp .env.example .env
+# set passwords + a Fernet key (command in the file)</code></pre></div></div>
+        <div class="step"><div><b>Start the stack</b>
+<pre><code>docker compose up -d</code></pre></div></div>
+      </div>
+      <div class="steps" style="counter-reset: step 3">
+        <div class="step"><div><b>Open Airflow</b><p class="muted">http://localhost:8080 with the admin login from <code>.env</code>. DAGs start unpaused; trigger the four ingestion DAGs to fill everything right away.</p></div></div>
+        <div class="step"><div><b>Query or view the results</b>
+<pre><code>psql -h localhost -U postgres -d loopiq \
+  -c "select * from gold.when_can_i_walk_today"
+open reports/latest.html</code></pre></div></div>
+        <div class="step"><div><b>Stop</b><p class="muted"><code>docker compose down</code> keeps the data volume; add <code>-v</code> to wipe it.</p></div></div>
+      </div>
+    </div>
+    <p class="small muted" style="margin-top:14px">On first boot, Postgres creates the databases and schemas, and Airflow migrates, creates the admin user and stores the <code>loopiq_postgres</code> connection.</p>
+  </div>
+</section>
+
+<!-- 12 -->
+<section class="slide" id="s12">
+  <div class="inner">
+    <p class="kicker">Engineering notes</p>
+    <h2>What broke, and what I changed</h2>
+    <div class="grid g2" style="margin-top:20px">
+      <div class="card"><h3>Tasks killed, empty logs</h3><p>The Docker VM had 2 GB, and Airflow's API server workers alone took ~800 MB. Cut web workers to 1 and parallelism to 4, and documented the 4 GB minimum.</p></div>
+      <div class="card"><h3>DAGs not discovered</h3><p>Airflow's safe mode skips files that never mention “airflow” and “dag”. Factory-built DAG files got a docstring.</p></div>
+      <div class="card"><h3>Connection lost on restart</h3><p>It was encrypted with a random per-container Fernet key. The key is now pinned in <code>.env</code>, and the connection is bootstrapped on startup.</p></div>
+      <div class="card"><h3>Airflow 3 → 2.10</h3><p>Ported <code>airflow.sdk</code> imports to TaskFlow 2.x and reset the metadata DB. The warehouse was untouched because it is a separate database.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 13 -->
+<section class="slide" id="s13">
+  <div class="inner">
+    <p class="kicker">Next steps</p>
+    <h2>Where it could go</h2>
+    <div class="grid g3" style="margin-top:20px">
+      <div class="card"><h3>Better swim answers</h3><p>Add Open-Meteo's Marine API (sea temperature, waves) and UV index as new bronze pipelines.</p></div>
+      <div class="card"><h3>Tests &amp; quality</h3><p>pytest on the SQL builders, data-quality checks (row counts, null rates) as Airflow tasks.</p></div>
+      <div class="card"><h3>Production shape</h3><p>CeleryExecutor or KubernetesExecutor, a secrets backend instead of <code>.env</code>, dbt for the SQL models.</p></div>
+    </div>
+    <p class="lead" style="margin-top:36px">Thank you. Questions?</p>
+  </div>
+</section>
+
+<nav class="nav" aria-label="Slides">
+  <button id="prev" aria-label="Previous slide">←</button>
+  <span class="count" id="count">1 / 13</span>
+  <button id="next" aria-label="Next slide">→</button>
+  <button id="theme" aria-label="Toggle theme">◐</button>
+</nav>
+
+<script>
+(function () {
+  const slides = [...document.querySelectorAll(".slide")];
+  const count = document.getElementById("count"), bar = document.getElementById("progress");
+  let current = 0;
+  const go = i => {
+    current = Math.max(0, Math.min(slides.length - 1, i));
+    slides[current].scrollIntoView({behavior: "smooth", block: "start"});
+  };
+  const update = i => {
+    current = i;
+    count.textContent = `${i + 1} / ${slides.length}`;
+    bar.style.width = `${((i + 1) / slides.length) * 100}%`;
+    history.replaceState(null, "", "#" + slides[i].id);
+  };
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) update(slides.indexOf(e.target)); });
+  }, {threshold: 0.55});
+  slides.forEach(s => io.observe(s));
+  document.getElementById("prev").onclick = () => go(current - 1);
+  document.getElementById("next").onclick = () => go(current + 1);
+  document.addEventListener("keydown", e => {
+    if (["ArrowRight", "ArrowDown", "PageDown", " "].includes(e.key)) { e.preventDefault(); go(current + 1); }
+    if (["ArrowLeft", "ArrowUp", "PageUp"].includes(e.key)) { e.preventDefault(); go(current - 1); }
+    if (e.key === "Home") go(0);
+    if (e.key === "End") go(slides.length - 1);
+  });
+  document.getElementById("theme").onclick = () => {
+    const root = document.documentElement;
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+    try { localStorage.setItem("deck-theme", root.dataset.theme); } catch (e) {}
+  };
+  try { const t = localStorage.getItem("deck-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  const start = slides.findIndex(s => "#" + s.id === location.hash);
+  if (start > 0) slides[start].scrollIntoView();
+})();
+</script>
+</body>
+</html>
