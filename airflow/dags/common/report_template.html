@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Activity Weather Report</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface-0: #f4f3f0;
+  --surface-1: #fcfcfb;
+  --surface-2: #ecebe7;
+  --border: #dddcd6;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #77766f;
+  --grid: #e6e5e0;
+  --series-1: #2a78d6;
+  --accent-soft: #e8f1fc;
+  --none: #e4e3df;
+  --seq-1: #86b6ef; --seq-2: #5598e7; --seq-3: #2a78d6; --seq-4: #184f95;
+  --seq-ink-1: #0b0b0b; --seq-ink-2: #0b0b0b; --seq-ink-3: #ffffff; --seq-ink-4: #ffffff;
+  --good: #0ca30c; --good-text: #006300;
+  --critical: #d03b3b; --critical-text: #b02a2a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #252523; --border: #34342f;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #96958c;
+    --grid: #2c2c29; --series-1: #3987e5; --accent-soft: #1b2a3d; --none: #2c2c2a;
+    --seq-1: #184f95; --seq-2: #256abf; --seq-3: #3987e5; --seq-4: #86b6ef;
+    --seq-ink-1: #ffffff; --seq-ink-2: #ffffff; --seq-ink-3: #0b0b0b; --seq-ink-4: #0b0b0b;
+    --good-text: #4cc94c; --critical-text: #f07070;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-0: #121211; --surface-1: #1a1a19; --surface-2: #252523; --border: #34342f;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #96958c;
+  --grid: #2c2c29; --series-1: #3987e5; --accent-soft: #1b2a3d; --none: #2c2c2a;
+  --seq-1: #184f95; --seq-2: #256abf; --seq-3: #3987e5; --seq-4: #86b6ef;
+  --seq-ink-1: #ffffff; --seq-ink-2: #ffffff; --seq-ink-3: #0b0b0b; --seq-ink-4: #0b0b0b;
+  --good-text: #4cc94c; --critical-text: #f07070;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--surface-0); color: var(--text-primary);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+main { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; }
+header h1 { font-size: 24px; margin: 0 0 4px; letter-spacing: -0.01em; }
+header p { margin: 0; color: var(--text-secondary); }
+.meta { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 20px 0 8px; }
+.controls .label { color: var(--text-secondary); font-size: 13px; margin-right: 4px; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface-1); }
+.seg button {
+  border: 0; background: transparent; color: var(--text-secondary); padding: 6px 12px;
+  font: inherit; font-size: 13px; cursor: pointer; border-right: 1px solid var(--border);
+}
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--text-primary); font-weight: 600; }
+.seg button:focus-visible { outline: 2px solid var(--series-1); outline-offset: -2px; }
+.theme-toggle { margin-left: auto; }
+section.card {
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
+  padding: 18px 18px 16px; margin-top: 16px;
+}
+section.card h2 { font-size: 16px; margin: 0 0 2px; }
+section.card .sub { margin: 0 0 14px; color: var(--text-secondary); font-size: 13px; }
+.scroll-x { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+tr.highlight td { background: var(--accent-soft); }
+td.city { font-weight: 600; white-space: nowrap; }
+.verdict { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.verdict .icon {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
+  color: #fff; font-size: 11px; line-height: 1;
+}
+.verdict.yes { color: var(--good-text); } .verdict.yes .icon { background: var(--good); }
+.verdict.no { color: var(--critical-text); } .verdict.no .icon { background: var(--critical); }
+.detail { display: block; color: var(--text-secondary); font-size: 12px; margin-top: 2px; }
+.heat { display: grid; gap: 2px; min-width: 640px; }
+.heat .rowlabel { font-size: 12px; color: var(--text-secondary); padding-right: 8px; align-self: center; white-space: nowrap; }
+.heat .collabel { font-size: 11px; color: var(--text-muted); text-align: center; white-space: nowrap; }
+.cell { height: 28px; border-radius: 4px; background: var(--none); cursor: default; }
+.cell.big { height: 40px; display: grid; place-items: center; font-size: 13px; font-weight: 600; }
+.cell.s1 { background: var(--seq-1); color: var(--seq-ink-1); }
+.cell.s2 { background: var(--seq-2); color: var(--seq-ink-2); }
+.cell.s3 { background: var(--seq-3); color: var(--seq-ink-3); }
+.cell.s4 { background: var(--seq-4); color: var(--seq-ink-4); }
+.cell.s0 { color: var(--text-muted); }
+.cell:hover, .cell.active { outline: 2px solid var(--text-primary); outline-offset: 1px; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-top: 12px; font-size: 12px; color: var(--text-secondary); }
+.legend .sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -3px; margin-right: 5px; }
+.legend .ramp { display: inline-flex; gap: 2px; margin: 0 6px; vertical-align: -3px; }
+.legend .ramp span { width: 18px; height: 14px; border-radius: 3px; }
+.charts { display: grid; gap: 4px; }
+.chart h3 { font-size: 13px; margin: 8px 0 0; font-weight: 600; }
+.chart svg { display: block; width: 100%; height: 130px; overflow: visible; }
+.chart text { font-size: 11px; fill: var(--text-muted); }
+.chart .gridline { stroke: var(--grid); stroke-width: 1; }
+.chart .line { fill: none; stroke: var(--series-1); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .cross { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart .dot { fill: var(--series-1); stroke: var(--surface-1); stroke-width: 2; }
+#tooltip {
+  position: fixed; pointer-events: none; z-index: 10; display: none; max-width: 260px;
+  background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.18);
+}
+#tooltip b { display: block; margin-bottom: 2px; }
+#tooltip .muted { color: var(--text-secondary); }
+details { margin-top: 14px; }
+summary { cursor: pointer; color: var(--text-secondary); font-size: 13px; }
+details table td, details table th { font-size: 12px; padding: 5px 8px; white-space: nowrap; }
+footer { margin-top: 24px; font-size: 12px; color: var(--text-muted); }
+@media (max-width: 640px) {
+  header h1 { font-size: 20px; }
+  .theme-toggle { margin-left: 0; }
+  th, td { padding: 6px; }
+}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Can I do it today?</h1>
+    <p>Swim, run, walk the dog or go for a walk: answers from the Open-Meteo forecast (gold layer).</p>
+    <div class="meta" id="meta"></div>
+  </header>
+
+  <div class="controls">
+    <span class="label">City</span>
+    <div class="seg" id="city-picker" role="group" aria-label="City"></div>
+    <div class="seg theme-toggle" id="theme-picker" role="group" aria-label="Theme">
+      <button data-theme-value="auto" aria-pressed="true">Auto</button>
+      <button data-theme-value="light" aria-pressed="false">Light</button>
+      <button data-theme-value="dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+
+  <section class="card">
+    <h2>Today at a glance</h2>
+    <p class="sub">Rest of today in each city's local time. Best time is the highest-scoring suitable hour.</p>
+    <div class="scroll-x"><table id="today-table"></table></div>
+  </section>
+
+  <section class="card">
+    <h2 id="hourly-title">Next 24 hours</h2>
+    <p class="sub">Each cell is one hour. Blue hours are suitable; darker blue scores higher. Hover a cell for conditions and reasons.</p>
+    <div class="scroll-x"><div class="heat" id="hourly-heat"></div></div>
+    <div class="legend">
+      <span><span class="sw" style="background:var(--none)"></span>Not suitable</span>
+      <span>Suitable, score
+        <span class="ramp"><span style="background:var(--seq-1)"></span><span style="background:var(--seq-2)"></span><span style="background:var(--seq-3)"></span><span style="background:var(--seq-4)"></span></span>
+        &lt;60 → 90+</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 id="conditions-title">Conditions, next 48 hours</h2>
+    <p class="sub">Hover to compare all three at the same hour.</p>
+    <div class="charts" id="charts"></div>
+  </section>
+
+  <section class="card">
+    <h2 id="outlook-title">7-day outlook</h2>
+    <p class="sub">Number of suitable hours per day. Hover for the full answer.</p>
+    <div class="scroll-x"><div class="heat" id="daily-heat"></div></div>
+    <div class="legend">
+      <span><span class="sw" style="background:var(--none)"></span>0 hours</span>
+      <span>Suitable hours
+        <span class="ramp"><span style="background:var(--seq-1)"></span><span style="background:var(--seq-2)"></span><span style="background:var(--seq-3)"></span><span style="background:var(--seq-4)"></span></span>
+        1–3 → 12+</span>
+    </div>
+    <details>
+      <summary>Show hourly data table for this city</summary>
+      <div class="scroll-x"><table id="data-table"></table></div>
+    </details>
+  </section>
+
+  <footer id="footer"></footer>
+</main>
+<div id="tooltip" role="tooltip"></div>
+
+<script type="application/json" id="report-data">__REPORT_DATA__</script>
+<script>
+(function () {
+  const DATA = JSON.parse(document.getElementById("report-data").textContent);
+  const ACTS = DATA.activities;
+  const actLabel = Object.fromEntries(ACTS.map(a => [a.key, a.label]));
+  const tip = document.getElementById("tooltip");
+  let city = DATA.cities.includes("Melbourne") ? "Melbourne" : DATA.cities[0];
+
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+  const fmt = (v, d = 0) => v == null ? "–" : Number(v).toFixed(d);
+  const hhmm = t => t.slice(11, 16);
+  const dayName = t => new Date(t.slice(0, 10) + "T12:00:00").toLocaleDateString("en-AU", {weekday: "short", day: "numeric", month: "short"});
+
+  function showTip(html, e) {
+    tip.innerHTML = html; tip.style.display = "block";
+    const pad = 14, r = tip.getBoundingClientRect();
+    let x = e.clientX + pad, y = e.clientY + pad;
+    if (x + r.width > window.innerWidth - 8) x = e.clientX - r.width - pad;
+    if (y + r.height > window.innerHeight - 8) y = e.clientY - r.height - pad;
+    tip.style.left = Math.max(8, x) + "px"; tip.style.top = Math.max(8, y) + "px";
+  }
+  function hideTip() { tip.style.display = "none"; }
+
+  // ---- header / footer
+  const m = DATA.meta;
+  document.getElementById("meta").textContent =
+    `Generated ${m.generated_at_utc} UTC · gold data as of ${m.gold_as_of_utc} UTC`;
+  document.getElementById("footer").textContent =
+    `Source: gold.activity_today, gold.activity_hourly, gold.activity_daily (current, non-deleted rows) · ` +
+    `DAG ${m.dag_id} · run ${m.dag_run_id}`;
+
+  // ---- theme toggle
+  const themeBtns = [...document.querySelectorAll("#theme-picker button")];
+  themeBtns.forEach(b => b.addEventListener("click", () => {
+    const v = b.dataset.themeValue;
+    if (v === "auto") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", v);
+    themeBtns.forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    try { localStorage.setItem("report-theme", v); } catch (e) {}
+  }));
+  try {
+    const saved = localStorage.getItem("report-theme");
+    if (saved) themeBtns.find(b => b.dataset.themeValue === saved)?.click();
+  } catch (e) {}
+
+  // ---- city picker
+  const picker = document.getElementById("city-picker");
+  DATA.cities.forEach(c => {
+    const b = document.createElement("button");
+    b.textContent = c; b.setAttribute("aria-pressed", String(c === city));
+    b.addEventListener("click", () => {
+      city = c;
+      [...picker.children].forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+      renderCity();
+    });
+    picker.appendChild(b);
+  });
+
+  // ---- today table (all cities, selected city highlighted)
+  function renderToday() {
+    const byCity = {};
+    DATA.today.forEach(r => ((byCity[r.location_name] ||= {})[r.activity] = r));
+    let html = "<thead><tr><th>City</th>" + ACTS.map(a => `<th>${esc(a.label)}</th>`).join("") + "</tr></thead><tbody>";
+    DATA.cities.forEach(c => {
+      const rows = byCity[c] || {};
+      const asOf = Object.values(rows)[0]?.as_of_local;
+      html += `<tr class="${c === city ? "highlight" : ""}"><td class="city">${esc(c)}` +
+        (asOf ? `<span class="detail">local ${esc(asOf.slice(11, 16))}</span>` : "") + "</td>";
+      ACTS.forEach(a => {
+        const r = rows[a.key];
+        if (!r) { html += "<td>–</td>"; return; }
+        const detail = r.can_do
+          ? `Best ~${esc(r.best_hour)} · ${esc((r.suitable_windows || []).join(", "))}`
+          : esc(r.main_blocker || "no suitable hours left");
+        html += `<td><span class="verdict ${r.can_do ? "yes" : "no"}"><span class="icon" aria-hidden="true">${r.can_do ? "✓" : "✕"}</span>${r.can_do ? "Yes" : "No"}</span>` +
+          `<span class="detail">${detail}</span></td>`;
+      });
+      html += "</tr>";
+    });
+    document.getElementById("today-table").innerHTML = html + "</tbody>";
+  }
+
+  const scoreBin = s => s >= 90 ? 4 : s >= 75 ? 3 : s >= 60 ? 2 : 1;
+  const hoursBin = h => h === 0 ? 0 : h >= 12 ? 4 : h >= 8 ? 3 : h >= 4 ? 2 : 1;
+
+  // ---- hourly heatmap (selected city, next 24h)
+  function renderHourly(rows) {
+    const times = [...new Set(rows.map(r => r.t))].slice(0, 24);
+    const el = document.getElementById("hourly-heat");
+    el.style.gridTemplateColumns = `max-content repeat(${times.length}, minmax(20px, 1fr))`;
+    let html = "<div></div>" + times.map((t, i) =>
+      `<div class="collabel">${i % 3 === 0 ? hhmm(t) : ""}</div>`).join("");
+    const idx = {};
+    rows.forEach(r => (idx[r.activity + "|" + r.t] = r));
+    ACTS.forEach(a => {
+      html += `<div class="rowlabel">${esc(a.label)}</div>`;
+      times.forEach(t => {
+        const r = idx[a.key + "|" + t];
+        const cls = r && r.ok ? "s" + scoreBin(r.score) : "";
+        html += `<div class="cell ${cls}" data-k="${esc(a.key + "|" + t)}"></div>`;
+      });
+    });
+    el.innerHTML = html;
+    el.onpointermove = e => {
+      const c = e.target.closest(".cell"); if (!c) return hideTip();
+      const r = idx[c.dataset.k]; if (!r) return hideTip();
+      showTip(`<b>${esc(actLabel[r.activity])} · ${esc(dayName(r.t))} ${esc(hhmm(r.t))}</b>` +
+        `${r.ok ? "Suitable" : "Not suitable"} · score ${r.score}` +
+        (r.reasons.length ? `<div class="muted">${esc(r.reasons.join(", "))}</div>` : "") +
+        `<div class="muted">Feels ${fmt(r.feels)}°C · rain ${fmt(r.rain_prob)}% · wind ${fmt(r.wind)} km/h (gusts ${fmt(r.gusts)})</div>`, e);
+    };
+    el.onpointerleave = hideTip;
+  }
+
+  // ---- conditions small multiples with a shared crosshair
+  const SERIES = [
+    {key: "feels", title: "Feels like (°C)", unit: "°C", d: 0},
+    {key: "rain_prob", title: "Rain chance (%)", unit: "%", d: 0, min: 0, max: 100},
+    {key: "wind", title: "Wind speed (km/h)", unit: " km/h", d: 0, min: 0},
+  ];
+  function niceTicks(lo, hi, n = 3) {
+    const span = hi - lo || 1, step0 = span / n, mag = Math.pow(10, Math.floor(Math.log10(step0)));
+    const step = [1, 2, 5, 10].map(s => s * mag).find(s => s >= step0);
+    const start = Math.floor(lo / step) * step, ticks = [];
+    for (let v = start; v <= hi + 1e-9; v += step) ticks.push(+v.toFixed(6));
+    if (ticks[ticks.length - 1] < hi) ticks.push(ticks[ticks.length - 1] + step);
+    return ticks;
+  }
+  function renderCharts(points) {
+    const wrap = document.getElementById("charts");
+    wrap.innerHTML = SERIES.map(s => `<div class="chart"><h3>${esc(s.title)}</h3><svg data-key="${s.key}"></svg></div>`).join("");
+    const svgs = [...wrap.querySelectorAll("svg")];
+    const W = Math.max(320, wrap.clientWidth), H = 130, L = 36, R = 8, T = 8, B = 22;
+    const n = points.length, xAt = i => L + (n <= 1 ? 0 : i * (W - L - R) / (n - 1));
+    const scales = SERIES.map((s, si) => {
+      const vals = points.map(p => p[s.key]).filter(v => v != null);
+      let lo = s.min ?? Math.min(...vals), hi = s.max ?? Math.max(...vals);
+      if (s.min == null) lo = Math.floor(lo - 1); if (s.max == null) hi = Math.ceil(hi + 1);
+      const ticks = niceTicks(lo, hi);
+      lo = Math.min(lo, ticks[0]); hi = Math.max(hi, ticks[ticks.length - 1]);
+      const yAt = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo || 1));
+      const svg = svgs[si];
+      svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      let g = ticks.map(t => `<line class="gridline" x1="${L}" x2="${W - R}" y1="${yAt(t)}" y2="${yAt(t)}"/>` +
+        `<text x="${L - 6}" y="${yAt(t) + 4}" text-anchor="end">${t}</text>`).join("");
+      // x labels: first point, each midnight (day name) and noon; skip any that would collide.
+      let lastRight = -Infinity;
+      points.forEach((p, i) => {
+        const h = hhmm(p.t);
+        const label = i === 0 ? `${dayName(p.t)} ${h}` : h === "00:00" ? dayName(p.t) : h === "12:00" ? "12:00" : null;
+        if (!label) return;
+        const width = label.length * 6.2, left = i === 0 ? xAt(i) : xAt(i) - width / 2;
+        if (left < lastRight + 10 || left + width > W) return;
+        lastRight = left + width;
+        g += `<text x="${xAt(i)}" y="${H - 6}" text-anchor="${i === 0 ? "start" : "middle"}">${esc(label)}</text>`;
+      });
+      const path = points.map((p, i) => p[s.key] == null ? null : `${xAt(i).toFixed(1)},${yAt(p[s.key]).toFixed(1)}`).filter(Boolean);
+      g += `<polyline class="line" points="${path.join(" ")}"/>`;
+      g += `<line class="cross" y1="${T}" y2="${H - B}" style="display:none"/><circle class="dot" r="4" style="display:none"/>`;
+      g += `<rect x="${L}" y="0" width="${W - L - R}" height="${H}" fill="transparent"/>`;
+      svg.innerHTML = g;
+      return yAt;
+    });
+    function move(e) {
+      const svg = e.currentTarget, rect = svg.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * (W / rect.width);
+      const i = Math.max(0, Math.min(n - 1, Math.round((x - L) / ((W - L - R) / Math.max(1, n - 1)))));
+      const p = points[i];
+      svgs.forEach((sv, si) => {
+        const v = p[SERIES[si].key], cross = sv.querySelector(".cross"), dot = sv.querySelector(".dot");
+        cross.setAttribute("x1", xAt(i)); cross.setAttribute("x2", xAt(i)); cross.style.display = "";
+        if (v == null) { dot.style.display = "none"; return; }
+        dot.setAttribute("cx", xAt(i)); dot.setAttribute("cy", scales[si](v)); dot.style.display = "";
+      });
+      showTip(`<b>${esc(dayName(p.t))} ${esc(hhmm(p.t))}</b>` +
+        SERIES.map(s => `${esc(s.title.replace(/ \(.*\)/, ""))}: ${fmt(p[s.key], s.d)}${s.unit}`).join("<br>") +
+        `<div class="muted">Gusts ${fmt(p.gusts)} km/h · rain ${fmt(p.precip, 1)} mm</div>`, e);
+    }
+    function leave() {
+      hideTip();
+      svgs.forEach(sv => { sv.querySelector(".cross").style.display = "none"; sv.querySelector(".dot").style.display = "none"; });
+    }
+    svgs.forEach(sv => { sv.addEventListener("pointermove", move); sv.addEventListener("pointerleave", leave); });
+  }
+
+  // ---- 7-day outlook heatmap
+  function renderDaily(rows) {
+    const dates = [...new Set(rows.map(r => r.date))].sort();
+    const el = document.getElementById("daily-heat");
+    el.style.gridTemplateColumns = `max-content repeat(${dates.length}, minmax(64px, 1fr))`;
+    const idx = {};
+    rows.forEach(r => (idx[r.activity + "|" + r.date] = r));
+    let html = "<div></div>" + dates.map(d => `<div class="collabel">${esc(dayName(d + "T00:00"))}</div>`).join("");
+    ACTS.forEach(a => {
+      html += `<div class="rowlabel">${esc(a.label)}</div>`;
+      dates.forEach(d => {
+        const r = idx[a.key + "|" + d];
+        const h = r ? r.hours : 0;
+        html += `<div class="cell big s${hoursBin(h)}" data-k="${esc(a.key + "|" + d)}">${r ? h + "h" : "–"}</div>`;
+      });
+    });
+    el.innerHTML = html;
+    el.onpointermove = e => {
+      const c = e.target.closest(".cell"); if (!c) return hideTip();
+      const r = idx[c.dataset.k]; if (!r) return hideTip();
+      showTip(`<b>${esc(actLabel[r.activity])} · ${esc(dayName(r.date + "T00:00"))}</b>${esc(r.answer)}`, e);
+    };
+    el.onpointerleave = hideTip;
+  }
+
+  function renderTable(rows) {
+    const byT = {};
+    rows.forEach(r => ((byT[r.t] ||= {t: r.t, feels: r.feels, rain_prob: r.rain_prob, wind: r.wind, gusts: r.gusts, precip: r.precip})[r.activity] = r));
+    let html = "<thead><tr><th>Time</th><th>Feels °C</th><th>Rain %</th><th>Rain mm</th><th>Wind km/h</th><th>Gusts km/h</th>" +
+      ACTS.map(a => `<th>${esc(a.label)}</th>`).join("") + "</tr></thead><tbody>";
+    Object.values(byT).forEach(p => {
+      html += `<tr><td>${esc(dayName(p.t))} ${esc(hhmm(p.t))}</td><td>${fmt(p.feels)}</td><td>${fmt(p.rain_prob)}</td><td>${fmt(p.precip, 1)}</td>` +
+        `<td>${fmt(p.wind)}</td><td>${fmt(p.gusts)}</td>` +
+        ACTS.map(a => { const r = p[a.key]; return `<td>${r ? (r.ok ? "Yes (" + r.score + ")" : "No: " + esc(r.reasons.join(", "))) : "–"}</td>`; }).join("") +
+        "</tr>";
+    });
+    document.getElementById("data-table").innerHTML = html + "</tbody>";
+  }
+
+  function renderCity() {
+    const hourly = DATA.hourly.filter(r => r.location_name === city);
+    const points = [];
+    const seen = new Set();
+    hourly.forEach(r => { if (!seen.has(r.t)) { seen.add(r.t); points.push(r); } });
+    document.getElementById("hourly-title").textContent = `Next 24 hours in ${city}`;
+    document.getElementById("conditions-title").textContent = `Conditions in ${city}, next 48 hours`;
+    document.getElementById("outlook-title").textContent = `7-day outlook for ${city}`;
+    renderToday();
+    renderHourly(hourly);
+    renderCharts(points);
+    renderDaily(DATA.daily.filter(r => r.location_name === city));
+    renderTable(hourly);
+  }
+
+  renderCity();
+  let resizeTimer;
+  window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderCity, 150); });
+})();
+</script>
+</body>
+</html>

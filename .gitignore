@@ -1,0 +1,15 @@
+# Secrets
+.env
+airflow/config/
+
+# Generated at runtime
+airflow/logs/
+reports/*.html
+!reports/.gitkeep
+
+# Assignment brief (not part of the solution)
+*.pdf
+
+__pycache__/
+*.pyc
+.DS_Store
